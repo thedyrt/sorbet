@@ -4,7 +4,7 @@ namespace sorbet::ast {
 
 class Verifier {
 public:
-    static std::unique_ptr<Expression> run(core::Context ctx, std::unique_ptr<Expression> node);
+    static ExprPtr run(core::Context ctx, ExprPtr node);
 };
 
 } // namespace sorbet::ast
