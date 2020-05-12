@@ -35,8 +35,6 @@ private:
     std::unique_ptr<Expression> ptr;
 
 public:
-    using pointer = Expression *;
-
     TreePtr() : ptr(nullptr) {}
 
     TreePtr(Expression *ptr) : ptr(ptr) {}
@@ -52,15 +50,15 @@ public:
         return *this;
     }
 
-    pointer get() const noexcept {
+    Expression *get() const noexcept {
         return ptr.get();
     }
 
-    pointer operator->() const noexcept {
+    Expression *operator->() const noexcept {
         return ptr.get();
     }
 
-    pointer operator*() const noexcept {
+    Expression *operator*() const noexcept {
         return ptr.get();
     }
 
