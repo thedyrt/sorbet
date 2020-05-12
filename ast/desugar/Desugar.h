@@ -7,7 +7,7 @@
 
 namespace sorbet::ast::desugar {
 
-ExprPtr node2Tree(core::MutableContext ctx, std::unique_ptr<parser::Node> what);
+TreePtr node2Tree(core::MutableContext ctx, std::unique_ptr<parser::Node> what);
 } // namespace sorbet::ast::desugar
 
 #endif // SORBET_DESUGAR_H

@@ -4,7 +4,7 @@ namespace sorbet::ast {
 
 class Verifier {
 public:
-    static ExprPtr run(core::Context ctx, ExprPtr node);
+    static TreePtr run(core::Context ctx, TreePtr node);
 };
 
 } // namespace sorbet::ast

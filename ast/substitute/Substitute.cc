@@ -10,7 +10,7 @@ class SubstWalk {
 private:
     const core::GlobalSubstitution &subst;
 
-    ExprPtr substClassName(core::MutableContext ctx, ExprPtr node) {
+    TreePtr substClassName(core::MutableContext ctx, TreePtr node) {
         auto constLit = cast_tree<UnresolvedConstantLit>(node.get());
         if (constLit == nullptr) { // uncommon case. something is strange
             if (isa_tree<EmptyTree>(node.get())) {
@@ -25,7 +25,7 @@ private:
         return make_unique<UnresolvedConstantLit>(constLit->loc, move(scope), cnst);
     }
 
-    ExprPtr substArg(core::MutableContext ctx, ExprPtr argp) {
+    TreePtr substArg(core::MutableContext ctx, TreePtr argp) {
         Expression *arg = argp.get();
         while (arg != nullptr) {
             typecase(
@@ -67,13 +67,13 @@ public:
         return original;
     }
 
-    ExprPtr postTransformUnresolvedIdent(core::MutableContext ctx,
+    TreePtr postTransformUnresolvedIdent(core::MutableContext ctx,
                                                         unique_ptr<UnresolvedIdent> original) {
         original->name = subst.substitute(original->name);
         return original;
     }
 
-    ExprPtr postTransformLocal(core::MutableContext ctx, unique_ptr<Local> local) {
+    TreePtr postTransformLocal(core::MutableContext ctx, unique_ptr<Local> local) {
         local->localVariable._name = subst.substitute(local->localVariable._name);
         return local;
     }
@@ -83,7 +83,7 @@ public:
         return original;
     }
 
-    ExprPtr postTransformLiteral(core::MutableContext ctx, unique_ptr<Literal> original) {
+    TreePtr postTransformLiteral(core::MutableContext ctx, unique_ptr<Literal> original) {
         if (original->isString(ctx)) {
             auto nameRef = original->asString(ctx);
             // The 'from' and 'to' GlobalState in this substitution will always be the same,
@@ -109,7 +109,7 @@ public:
         return original;
     }
 
-    ExprPtr postTransformUnresolvedConstantLit(core::MutableContext ctx,
+    TreePtr postTransformUnresolvedConstantLit(core::MutableContext ctx,
                                                               unique_ptr<UnresolvedConstantLit> original) {
         original->cnst = subst.substitute(original->cnst);
         original->scope = substClassName(ctx, move(original->scope));
@@ -118,8 +118,8 @@ public:
 };
 } // namespace
 
-ExprPtr Substitute::run(core::MutableContext ctx, const core::GlobalSubstitution &subst,
-                                       ExprPtr what) {
+TreePtr Substitute::run(core::MutableContext ctx, const core::GlobalSubstitution &subst,
+                                       TreePtr what) {
     if (subst.useFastPath()) {
         return what;
     }
