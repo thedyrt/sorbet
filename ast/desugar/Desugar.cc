@@ -32,7 +32,7 @@ struct DesugarContext final {
 };
 
 core::NameRef blockArg2Name(DesugarContext dctx, const BlockArg &blkArg) {
-    auto blkIdent = cast_tree<UnresolvedIdent>(blkArg.expr.get());
+    auto blkIdent = cast_tree<UnresolvedIdent>(blkArg.expr);
     ENFORCE(blkIdent != nullptr, "BlockArg must wrap UnresolvedIdent in desugar.");
     return blkIdent->name;
 }

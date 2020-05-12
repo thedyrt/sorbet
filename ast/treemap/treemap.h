@@ -152,7 +152,7 @@ GENERATE_HAS_MEMBER(postTransformCast);
                                                                                         \
     template <class FUNC, class CTX, bool has> class PostPonePreTransform_##X {         \
     public:                                                                             \
-        static unique_ptr<X> call(CTX ctx, unique_ptr<X> cd, FUNC &what) {              \
+        static TreePtr call(CTX ctx, TreePtr cd, FUNC &what) {              \
             Exception::raise("should never be called. Incorrect use of TreeMap?");      \
             return nullptr;                                                             \
         }                                                                               \
@@ -160,14 +160,14 @@ GENERATE_HAS_MEMBER(postTransformCast);
                                                                                         \
     template <class FUNC, class CTX> class PostPonePreTransform_##X<FUNC, CTX, true> {  \
     public:                                                                             \
-        static unique_ptr<X> call(CTX ctx, unique_ptr<X> cd, FUNC &func) {              \
+        static TreePtr call(CTX ctx, TreePtr cd, FUNC &func) {              \
             return func.preTransform##X(ctx, move(cd));                                 \
         }                                                                               \
     };                                                                                  \
                                                                                         \
     template <class FUNC, class CTX> class PostPonePreTransform_##X<FUNC, CTX, false> { \
     public:                                                                             \
-        static unique_ptr<X> call(CTX ctx, unique_ptr<X> cd, FUNC &func) {              \
+        static TreePtr call(CTX ctx, TreePtr cd, FUNC &func) {              \
             return cd;                                                                  \
         }                                                                               \
     };
@@ -176,7 +176,7 @@ GENERATE_HAS_MEMBER(postTransformCast);
                                                                                          \
     template <class FUNC, class CTX, bool has> class PostPonePostTransform_##X {         \
     public:                                                                              \
-        static TreePtr call(CTX ctx, unique_ptr<X> cd, FUNC &what) {      \
+        static TreePtr call(CTX ctx, TreePtr cd, FUNC &what) {      \
             Exception::raise("should never be called. Incorrect use of TreeMap?");       \
             return nullptr;                                                              \
         }                                                                                \
@@ -184,14 +184,14 @@ GENERATE_HAS_MEMBER(postTransformCast);
                                                                                          \
     template <class FUNC, class CTX> class PostPonePostTransform_##X<FUNC, CTX, true> {  \
     public:                                                                              \
-        static TreePtr call(CTX ctx, unique_ptr<X> cd, FUNC &func) {      \
+        static TreePtr call(CTX ctx, TreePtr cd, FUNC &func) {      \
             return func.postTransform##X(ctx, move(cd));                                 \
         }                                                                                \
     };                                                                                   \
                                                                                          \
     template <class FUNC, class CTX> class PostPonePostTransform_##X<FUNC, CTX, false> { \
     public:                                                                              \
-        static TreePtr call(CTX ctx, unique_ptr<X> cd, FUNC &func) {      \
+        static TreePtr call(CTX ctx, TreePtr cd, FUNC &func) {      \
             return cd;                                                                   \
         }                                                                                \
     };
