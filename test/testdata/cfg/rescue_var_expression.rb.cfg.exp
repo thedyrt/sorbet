@@ -29,29 +29,30 @@ subgraph "cluster_::Object#foo" {
     ];
 
     "bb::Object#foo_4" -> "bb::Object#foo_3" [style="bold"];
-    "bb::Object#foo_4" -> "bb::Object#foo_6" [style="tapered"];
+    "bb::Object#foo_4" -> "bb::Object#foo_5" [style="tapered"];
 
+    "bb::Object#foo_5" [
+        label = "block[id=5, rubyBlockId=4](<returnMethodTemp>$2: NilClass)\l<unconditional>\l"
+    ];
+
+    "bb::Object#foo_5" -> "bb::Object#foo_6" [style="bold"];
     "bb::Object#foo_6" [
-        label = "block[id=6, rubyBlockId=3](<returnMethodTemp>$2: NilClass, <gotoDeadTemp>$12: NilClass)\l<gotoDeadTemp>$12\l"
+        label = "block[id=6, rubyBlockId=3](<returnMethodTemp>$2: T.nilable(Integer), <gotoDeadTemp>$12: T.nilable(TrueClass))\l<gotoDeadTemp>$12: T.nilable(TrueClass)\l"
     ];
 
     "bb::Object#foo_6" -> "bb::Object#foo_1" [style="bold"];
     "bb::Object#foo_6" -> "bb::Object#foo_9" [style="tapered"];
 
     "bb::Object#foo_7" [
-        label = "block[id=7, rubyBlockId=2](<exceptionValue>$3: Exception)\l<statTemp>$10: T.class_of(MyClass) = alias <C MyClass>\l<statTemp>$9: MyClass = <statTemp>$10: T.class_of(MyClass).new()\l<statTemp>$8: Exception = <statTemp>$9: MyClass.foo=(<exceptionValue>$3: Exception)\l<returnMethodTemp>$2: Integer(3) = 3\l<gotoDeadTemp>$12: NilClass\l"
+        label = "block[id=7, rubyBlockId=2](<exceptionValue>$3: Exception)\l<statTemp>$10: T.class_of(MyClass) = alias <C MyClass>\l<statTemp>$9: MyClass = <statTemp>$10: T.class_of(MyClass).new()\l<statTemp>$8: Exception = <statTemp>$9: MyClass.foo=(<exceptionValue>$3: Exception)\l<returnMethodTemp>$2: Integer(3) = 3\l<unconditional>\l"
     ];
 
-    "bb::Object#foo_7" -> "bb::Object#foo_1" [style="bold"];
-    "bb::Object#foo_7" -> "bb::Object#foo_9" [style="tapered"];
-
+    "bb::Object#foo_7" -> "bb::Object#foo_6" [style="bold"];
     "bb::Object#foo_8" [
-        label = "block[id=8, rubyBlockId=2](<returnMethodTemp>$2: NilClass)\l<gotoDeadTemp>$12: TrueClass(true) = true\l<gotoDeadTemp>$12: TrueClass(true)\l"
+        label = "block[id=8, rubyBlockId=2](<returnMethodTemp>$2: NilClass)\l<gotoDeadTemp>$12: TrueClass(true) = true\l<unconditional>\l"
     ];
 
-    "bb::Object#foo_8" -> "bb::Object#foo_1" [style="bold"];
-    "bb::Object#foo_8" -> "bb::Object#foo_9" [style="tapered"];
-
+    "bb::Object#foo_8" -> "bb::Object#foo_6" [style="bold"];
     "bb::Object#foo_9" [
         label = "block[id=9, rubyBlockId=0](<returnMethodTemp>$2: Integer(3))\l<finalReturn>: T.noreturn = return <returnMethodTemp>$2: Integer(3)\l<unconditional>\l"
     ];
