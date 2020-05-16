@@ -50,6 +50,14 @@ public:
         return *this;
     }
 
+    Expression *release() noexcept {
+        return ptr.release();
+    }
+
+    void reset(Expression *expr) noexcept {
+        ptr.reset(expr);
+    }
+
     Expression *get() const noexcept {
         return ptr.get();
     }
