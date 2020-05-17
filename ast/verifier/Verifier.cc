@@ -18,24 +18,25 @@ public:
         return original;
     }
 
-    unique_ptr<MethodDef> preTransformMethodDef(core::Context ctx, unique_ptr<MethodDef> original) {
+    TreePtr preTransformMethodDef(core::Context ctx, TreePtr original) {
         methodDepth++;
         return original;
     }
 
-    TreePtr postTransformMethodDef(core::Context ctx, unique_ptr<MethodDef> original) {
+    TreePtr postTransformMethodDef(core::Context ctx, TreePtr original) {
         methodDepth--;
         return original;
     }
 
-    TreePtr postTransformAssign(core::Context ctx, unique_ptr<Assign> original) {
-        if (ast::isa_tree<ast::UnresolvedConstantLit>(original->lhs.get())) {
+    TreePtr postTransformAssign(core::Context ctx, TreePtr original) {
+        auto *assign = cast_tree<Assign>(original);
+        if (ast::isa_tree<ast::UnresolvedConstantLit>(assign->lhs.get())) {
             ENFORCE(methodDepth == 0, "Found constant definition inside method definition");
         }
         return original;
     }
 
-    unique_ptr<Block> preTransformBlock(core::Context ctx, unique_ptr<Block> original) {
+    TreePtr preTransformBlock(core::Context ctx, TreePtr original) {
         original->_sanityCheck();
         return original;
     }
