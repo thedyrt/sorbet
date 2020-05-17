@@ -32,7 +32,7 @@ struct DesugarContext final {
 };
 
 core::NameRef blockArg2Name(DesugarContext dctx, const BlockArg &blkArg) {
-    auto blkIdent = cast_tree<UnresolvedIdent>(blkArg.expr);
+    auto blkIdent = cast_tree_const<UnresolvedIdent>(blkArg.expr);
     ENFORCE(blkIdent != nullptr, "BlockArg must wrap UnresolvedIdent in desugar.");
     return blkIdent->name;
 }
@@ -69,7 +69,7 @@ pair<MethodDef::ARGS_store, InsSeq::STATS_store> desugarArgs(DesugarContext dctx
 }
 
 TreePtr desugarBody(DesugarContext dctx, core::LocOffsets loc, unique_ptr<parser::Node> &bodynode,
-                                   InsSeq::STATS_store destructures) {
+                    InsSeq::STATS_store destructures) {
     auto body = node2TreeImpl(dctx, std::move(bodynode));
     if (!destructures.empty()) {
         auto bodyLoc = body->loc;
@@ -83,11 +83,10 @@ TreePtr desugarBody(DesugarContext dctx, core::LocOffsets loc, unique_ptr<parser
 }
 bool isStringLit(DesugarContext dctx, TreePtr &expr) {
     Literal *lit;
-    return (lit = cast_tree<Literal>(expr.get())) && lit->isString(dctx.ctx);
+    return (lit = cast_tree<Literal>(expr)) && lit->isString(dctx.ctx);
 }
 
-TreePtr mergeStrings(DesugarContext dctx, core::LocOffsets loc,
-                                    InlinedVector<TreePtr, 4> stringsAccumulated) {
+TreePtr mergeStrings(DesugarContext dctx, core::LocOffsets loc, InlinedVector<TreePtr, 4> stringsAccumulated) {
     if (stringsAccumulated.size() == 1) {
         return move(stringsAccumulated[0]);
     } else {
@@ -95,10 +94,10 @@ TreePtr mergeStrings(DesugarContext dctx, core::LocOffsets loc,
             loc,
             dctx.ctx.state.enterNameUTF8(fmt::format(
                 "{}", fmt::map_join(stringsAccumulated.begin(), stringsAccumulated.end(), "", [&](const auto &expr) {
-                    if (isa_tree<EmptyTree>(expr.get()))
+                    if (isa_tree<EmptyTree>(expr))
                         return ""sv;
                     else
-                        return cast_tree<Literal>(expr.get())->asString(dctx.ctx).data(dctx.ctx)->shortName(dctx.ctx);
+                        return cast_tree_const<Literal>(expr)->asString(dctx.ctx).data(dctx.ctx)->shortName(dctx.ctx);
                 }))));
     }
 }
@@ -147,12 +146,12 @@ TreePtr desugarDString(DesugarContext dctx, core::LocOffsets loc, parser::NodeVe
     }
 }
 
-bool isIVarAssign(Expression *stat) {
+bool isIVarAssign(TreePtr &stat) {
     auto assign = cast_tree<Assign>(stat);
     if (!assign) {
         return false;
     }
-    auto ident = cast_tree<UnresolvedIdent>(assign->lhs.get());
+    auto ident = cast_tree<UnresolvedIdent>(assign->lhs);
     if (!ident) {
         return false;
     }
@@ -174,22 +173,22 @@ TreePtr validateRBIBody(DesugarContext dctx, TreePtr body) {
     if (isa_tree<EmptyTree>(body.get())) {
         return body;
     } else if (isa_tree<Assign>(body.get())) {
-        if (!isIVarAssign(body.get())) {
+        if (!isIVarAssign(body)) {
             if (auto e = dctx.ctx.beginError(body->loc, core::errors::Desugar::CodeInRBI)) {
                 e.setHeader("RBI methods must not have code");
                 e.replaceWith("Delete the body", loc, "");
             }
         }
-    } else if (auto inseq = cast_tree<InsSeq>(body.get())) {
+    } else if (auto inseq = cast_tree<InsSeq>(body)) {
         for (auto &stat : inseq->stats) {
-            if (!isIVarAssign(stat.get())) {
+            if (!isIVarAssign(stat)) {
                 if (auto e = dctx.ctx.beginError(stat->loc, core::errors::Desugar::CodeInRBI)) {
                     e.setHeader("RBI methods must not have code");
                     e.replaceWith("Delete the body", loc, "");
                 }
             }
         }
-        if (!isIVarAssign(inseq->expr.get())) {
+        if (!isIVarAssign(inseq->expr)) {
             if (auto e = dctx.ctx.beginError(inseq->expr->loc, core::errors::Desugar::CodeInRBI)) {
                 e.setHeader("RBI methods must not have code");
                 e.replaceWith("Delete the body", loc, "");
@@ -204,8 +203,8 @@ TreePtr validateRBIBody(DesugarContext dctx, TreePtr body) {
     return body;
 }
 
-unique_ptr<MethodDef> buildMethod(DesugarContext dctx, core::LocOffsets loc, core::Loc declLoc, core::NameRef name,
-                                  unique_ptr<parser::Node> &argnode, unique_ptr<parser::Node> &body, bool isSelf) {
+TreePtr buildMethod(DesugarContext dctx, core::LocOffsets loc, core::Loc declLoc, core::NameRef name,
+                    unique_ptr<parser::Node> &argnode, unique_ptr<parser::Node> &body, bool isSelf) {
     // Reset uniqueCounter within this scope (to keep numbers small)
     u4 uniqueCounter = 1;
     DesugarContext dctx1(dctx.ctx, uniqueCounter, dctx.enclosingBlockArg, declLoc, name);
@@ -216,7 +215,7 @@ unique_ptr<MethodDef> buildMethod(DesugarContext dctx, core::LocOffsets loc, cor
         args.emplace_back(MK::BlockArg(blkLoc, MK::Local(blkLoc, core::Names::blkArg())));
     }
 
-    const auto &blkArg = cast_tree<BlockArg>(args.back().get());
+    const auto &blkArg = cast_tree<BlockArg>(args.back());
     ENFORCE(blkArg != nullptr, "Every method's last arg must be a block arg by now.");
     auto enclosingBlockArg = blockArg2Name(dctx, *blkArg);
 
@@ -225,15 +224,15 @@ unique_ptr<MethodDef> buildMethod(DesugarContext dctx, core::LocOffsets loc, cor
     desugaredBody = validateRBIBody(dctx2, move(desugaredBody));
 
     auto mdef = MK::Method(loc, declLoc, name, std::move(args), std::move(desugaredBody));
-    mdef->flags.isSelfMethod = isSelf;
+    cast_tree<MethodDef>(mdef)->flags.isSelfMethod = isSelf;
     return mdef;
 }
 
-unique_ptr<Block> symbol2Proc(DesugarContext dctx, TreePtr expr) {
+TreePtr symbol2Proc(DesugarContext dctx, TreePtr expr) {
     auto loc = expr->loc;
     core::NameRef temp = dctx.ctx.state.freshNameUnique(core::UniqueNameKind::Desugar, core::Names::blockPassTemp(),
                                                         ++dctx.uniqueCounter);
-    Literal *lit = cast_tree<Literal>(expr.get());
+    Literal *lit = cast_tree<Literal>(expr);
     ENFORCE(lit && lit->isSymbol(dctx.ctx));
 
     // &:foo => {|temp| temp.foo() }
@@ -252,8 +251,7 @@ TreePtr unsupportedNode(DesugarContext dctx, parser::Node *node) {
     return MK::EmptyTree();
 }
 
-TreePtr desugarMlhs(DesugarContext dctx, core::LocOffsets loc, parser::Mlhs *lhs,
-                                   TreePtr rhs) {
+TreePtr desugarMlhs(DesugarContext dctx, core::LocOffsets loc, parser::Mlhs *lhs, TreePtr rhs) {
     InsSeq::STATS_store stats;
 
     core::NameRef tempRhs =
@@ -300,7 +298,7 @@ TreePtr desugarMlhs(DesugarContext dctx, core::LocOffsets loc, parser::Mlhs *lhs
                 stats.emplace_back(desugarMlhs(dctx, mlhs->loc, mlhs, std::move(val)));
             } else {
                 TreePtr lh = node2TreeImpl(dctx, std::move(c));
-                if (auto restArg = cast_tree<RestArg>(lh.get())) {
+                if (auto restArg = cast_tree<RestArg>(lh)) {
                     if (auto e = dctx.ctx.beginError(lh->loc, core::errors::Desugar::UnsupportedRestArgsDestructure)) {
                         e.setHeader("Unsupported rest args in destructure");
                     }
@@ -401,8 +399,7 @@ OpAsgnScaffolding copyArgsForOpAsgn(DesugarContext dctx, Send *s) {
 //     break
 //   end
 // end
-TreePtr doUntil(DesugarContext dctx, core::LocOffsets loc, TreePtr cond,
-                               TreePtr body) {
+TreePtr doUntil(DesugarContext dctx, core::LocOffsets loc, TreePtr cond, TreePtr body) {
     auto breaker = MK::If(loc, std::move(cond), MK::Break(loc, MK::EmptyTree()), MK::EmptyTree());
     auto breakWithBody = MK::InsSeq1(loc, std::move(body), std::move(breaker));
     return MK::While(loc, MK::True(loc), std::move(breakWithBody));
@@ -463,7 +460,7 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                     } else {
                         auto convertedBlock = node2TreeImpl(dctx, std::move(block));
                         Literal *lit;
-                        if ((lit = cast_tree<Literal>(convertedBlock.get())) && lit->isSymbol(dctx.ctx)) {
+                        if ((lit = cast_tree<Literal>(convertedBlock)) && lit->isSymbol(dctx.ctx)) {
                             res = MK::Send(loc, MK::Constant(loc, core::Symbols::Magic()), core::Names::callWithSplat(),
                                            std::move(sendargs), {}, symbol2Proc(dctx, std::move(convertedBlock)));
                         } else {
@@ -494,7 +491,7 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                             MK::Literal(loc, core::make_type<core::LiteralType>(core::Symbols::Symbol(), send->method));
                         auto convertedBlock = node2TreeImpl(dctx, std::move(block));
                         Literal *lit;
-                        if ((lit = cast_tree<Literal>(convertedBlock.get())) && lit->isSymbol(dctx.ctx)) {
+                        if ((lit = cast_tree<Literal>(convertedBlock)) && lit->isSymbol(dctx.ctx)) {
                             res = MK::Send(loc, std::move(rec), send->method, std::move(args), flags,
                                            symbol2Proc(dctx, std::move(convertedBlock)));
                         } else {
@@ -563,8 +560,8 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
             [&](parser::And *and_) {
                 auto lhs = node2TreeImpl(dctx, std::move(and_->left));
                 auto rhs = node2TreeImpl(dctx, std::move(and_->right));
-                if (auto i = cast_tree<Reference>(lhs.get())) {
-                    auto cond = MK::cpRef(*i);
+                if (isa_tree<Reference>(lhs)) {
+                    auto cond = MK::cpRef(lhs);
                     auto iff = MK::If(loc, std::move(cond), std::move(rhs), std::move(lhs));
                     result = std::move(iff);
                 } else {
@@ -579,8 +576,8 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
             [&](parser::Or *or_) {
                 auto lhs = node2TreeImpl(dctx, std::move(or_->left));
                 auto rhs = node2TreeImpl(dctx, std::move(or_->right));
-                if (auto i = cast_tree<Reference>(lhs.get())) {
-                    auto cond = MK::cpRef(*i);
+                if (isa_tree<Reference>(lhs)) {
+                    auto cond = MK::cpRef(lhs);
                     auto iff = MK::If(loc, std::move(cond), std::move(lhs), std::move(rhs));
                     result = std::move(iff);
                 } else {
@@ -595,7 +592,7 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
             [&](parser::AndAsgn *andAsgn) {
                 auto recv = node2TreeImpl(dctx, std::move(andAsgn->left));
                 auto arg = node2TreeImpl(dctx, std::move(andAsgn->right));
-                if (auto s = cast_tree<Send>(recv.get())) {
+                if (auto s = cast_tree<Send>(recv)) {
                     auto sendLoc = s->loc;
                     auto [tempRecv, stats, readArgs, assgnArgs] = copyArgsForOpAsgn(dctx, s);
 
@@ -611,25 +608,25 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                     auto iff = MK::If(sendLoc, MK::Local(sendLoc, tempResult), std::move(body), std::move(elsep));
                     auto wrapped = MK::InsSeq(loc, std::move(stats), std::move(iff));
                     result = std::move(wrapped);
-                } else if (auto i = cast_tree<Reference>(recv.get())) {
-                    auto cond = MK::cpRef(*i);
+                } else if (isa_tree<Reference>(recv)) {
+                    auto cond = MK::cpRef(recv);
                     auto body = MK::Assign(loc, std::move(recv), std::move(arg));
-                    auto elsep = MK::cpRef(*i);
+                    auto elsep = MK::cpRef(recv);
                     auto iff = MK::If(loc, std::move(cond), std::move(body), std::move(elsep));
                     result = std::move(iff);
-                } else if (auto i = cast_tree<UnresolvedConstantLit>(recv.get())) {
+                } else if (auto i = cast_tree<UnresolvedConstantLit>(recv)) {
                     if (auto e = dctx.ctx.beginError(what->loc, core::errors::Desugar::NoConstantReassignment)) {
                         e.setHeader("Constant reassignment is not supported");
                     }
                     TreePtr res = MK::EmptyTree();
                     result = std::move(res);
-                } else if (auto i = cast_tree<InsSeq>(recv.get())) {
+                } else if (auto i = cast_tree<InsSeq>(recv)) {
                     // The logic below is explained more fully in the OpAsgn case
-                    auto ifExpr = cast_tree<If>(i->expr.get());
+                    auto ifExpr = cast_tree<If>(i->expr);
                     if (!ifExpr) {
                         Exception::raise("Unexpected left-hand side of &&=: please file an issue");
                     }
-                    auto s = cast_tree<Send>(ifExpr->elsep.get());
+                    auto s = cast_tree<Send>(ifExpr->elsep);
                     if (!s) {
                         Exception::raise("Unexpected left-hand side of &&=: please file an issue");
                     }
@@ -658,7 +655,7 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
             [&](parser::OrAsgn *orAsgn) {
                 auto recv = node2TreeImpl(dctx, std::move(orAsgn->left));
                 auto arg = node2TreeImpl(dctx, std::move(orAsgn->right));
-                if (auto s = cast_tree<Send>(recv.get())) {
+                if (auto s = cast_tree<Send>(recv)) {
                     auto sendLoc = s->loc;
                     auto [tempRecv, stats, readArgs, assgnArgs] = copyArgsForOpAsgn(dctx, s);
                     assgnArgs.emplace_back(std::move(arg));
@@ -673,25 +670,25 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                     auto iff = MK::If(sendLoc, MK::Local(sendLoc, tempResult), std::move(body), std::move(elsep));
                     auto wrapped = MK::InsSeq(loc, std::move(stats), std::move(iff));
                     result = std::move(wrapped);
-                } else if (auto i = cast_tree<Reference>(recv.get())) {
-                    auto cond = MK::cpRef(*i);
+                } else if (isa_tree<Reference>(recv)) {
+                    auto cond = MK::cpRef(recv);
                     auto body = MK::Assign(loc, std::move(recv), std::move(arg));
-                    auto elsep = MK::cpRef(*i);
+                    auto elsep = MK::cpRef(recv);
                     auto iff = MK::If(loc, std::move(cond), std::move(elsep), std::move(body));
                     result = std::move(iff);
-                } else if (auto i = cast_tree<UnresolvedConstantLit>(recv.get())) {
+                } else if (auto i = cast_tree<UnresolvedConstantLit>(recv)) {
                     if (auto e = dctx.ctx.beginError(what->loc, core::errors::Desugar::NoConstantReassignment)) {
                         e.setHeader("Constant reassignment is not supported");
                     }
                     TreePtr res = MK::EmptyTree();
                     result = std::move(res);
-                } else if (auto i = cast_tree<InsSeq>(recv.get())) {
+                } else if (auto i = cast_tree<InsSeq>(recv)) {
                     // The logic below is explained more fully in the OpAsgn case
-                    auto ifExpr = cast_tree<If>(i->expr.get());
+                    auto ifExpr = cast_tree<If>(i->expr);
                     if (!ifExpr) {
                         Exception::raise("Unexpected left-hand side of &&=: please file an issue");
                     }
-                    auto s = cast_tree<Send>(ifExpr->elsep.get());
+                    auto s = cast_tree<Send>(ifExpr->elsep);
                     if (!s) {
                         Exception::raise("Unexpected left-hand side of &&=: please file an issue");
                     }
@@ -720,7 +717,7 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
             [&](parser::OpAsgn *opAsgn) {
                 auto recv = node2TreeImpl(dctx, std::move(opAsgn->left));
                 auto rhs = node2TreeImpl(dctx, std::move(opAsgn->right));
-                if (auto s = cast_tree<Send>(recv.get())) {
+                if (auto s = cast_tree<Send>(recv)) {
                     auto sendLoc = s->loc;
                     auto [tempRecv, stats, readArgs, assgnArgs] = copyArgsForOpAsgn(dctx, s);
 
@@ -733,30 +730,30 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                                         std::move(assgnArgs), s->flags);
                     auto wrapped = MK::InsSeq(loc, std::move(stats), std::move(res));
                     result = std::move(wrapped);
-                } else if (auto i = cast_tree<Reference>(recv.get())) {
-                    auto lhs = MK::cpRef(*i);
+                } else if (isa_tree<Reference>(recv)) {
+                    auto lhs = MK::cpRef(recv);
                     auto send = MK::Send1(loc, std::move(recv), opAsgn->op, std::move(rhs));
                     auto res = MK::Assign(loc, std::move(lhs), std::move(send));
                     result = std::move(res);
-                } else if (auto i = cast_tree<UnresolvedConstantLit>(recv.get())) {
+                } else if (auto i = cast_tree<UnresolvedConstantLit>(recv)) {
                     if (auto e = dctx.ctx.beginError(what->loc, core::errors::Desugar::NoConstantReassignment)) {
                         e.setHeader("Constant reassignment is not supported");
                     }
                     TreePtr res = MK::EmptyTree();
                     result = std::move(res);
-                } else if (auto i = cast_tree<InsSeq>(recv.get())) {
+                } else if (auto i = cast_tree<InsSeq>(recv)) {
                     // if this is an InsSeq, then is probably the result of a safe send (i.e. an expression of the form
                     // x&.y on the LHS) which means it'll take the rough shape:
                     //   { $temp = x; if $temp == nil then nil else $temp.y }
                     // on the LHS. We want to insert the y= into the if-expression at the end, like:
                     //   { $temp = x; if $temp == nil then nil else { $t2 = $temp.y; $temp.y = $t2 op RHS } }
                     // that means we first need to find out whether the final expression is an If...
-                    auto ifExpr = cast_tree<If>(i->expr.get());
+                    auto ifExpr = cast_tree<If>(i->expr);
                     if (!ifExpr) {
                         Exception::raise("Unexpected left-hand side of &&=: please file an issue");
                     }
                     // and if so, find out whether the else-case is a send...
-                    auto s = cast_tree<Send>(ifExpr->elsep.get());
+                    auto s = cast_tree<Send>(ifExpr->elsep);
                     if (!s) {
                         Exception::raise("Unexpected left-hand side of &&=: please file an issue");
                     }
@@ -896,14 +893,13 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                 result = std::move(res);
             },
             [&](parser::Kwoptarg *arg) {
-                TreePtr res =
-                    MK::OptionalArg(loc, MK::KeywordArg(loc, MK::Local(arg->nameLoc, arg->name)),
-                                    node2TreeImpl(dctx, std::move(arg->default_)));
+                TreePtr res = MK::OptionalArg(loc, MK::KeywordArg(loc, MK::Local(arg->nameLoc, arg->name)),
+                                              node2TreeImpl(dctx, std::move(arg->default_)));
                 result = std::move(res);
             },
             [&](parser::Optarg *arg) {
                 TreePtr res = MK::OptionalArg(loc, MK::Local(arg->nameLoc, arg->name),
-                                                             node2TreeImpl(dctx, std::move(arg->default_)));
+                                              node2TreeImpl(dctx, std::move(arg->default_)));
                 result = std::move(res);
             },
             [&](parser::Shadowarg *arg) {
@@ -912,8 +908,8 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
             },
             [&](parser::DefMethod *method) {
                 bool isSelf = false;
-                TreePtr res = buildMethod(dctx, method->loc, core::Loc(dctx.ctx.file, method->declLoc),
-                                                         method->name, method->args, method->body, isSelf);
+                TreePtr res = buildMethod(dctx, method->loc, core::Loc(dctx.ctx.file, method->declLoc), method->name,
+                                          method->args, method->body, isSelf);
                 result = std::move(res);
             },
             [&](parser::DefS *method) {
@@ -928,8 +924,8 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                     return;
                 }
                 bool isSelf = true;
-                TreePtr res = buildMethod(dctx, method->loc, core::Loc(dctx.ctx.file, method->declLoc),
-                                                         method->name, method->args, method->body, isSelf);
+                TreePtr res = buildMethod(dctx, method->loc, core::Loc(dctx.ctx.file, method->declLoc), method->name,
+                                          method->args, method->body, isSelf);
                 result = std::move(res);
             },
             [&](parser::SClass *sclass) {
@@ -947,11 +943,10 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
 
                 ClassDef::RHS_store body = scopeNodeToBody(dctx, std::move(sclass->body));
                 ClassDef::ANCESTORS_store emptyAncestors;
-                TreePtr res =
-                    MK::Class(sclass->loc, core::Loc(dctx.ctx.file, sclass->declLoc),
-                              make_unique<UnresolvedIdent>(sclass->expr->loc, UnresolvedIdent::Kind::Class,
-                                                           core::Names::singleton()),
-                              std::move(emptyAncestors), std::move(body));
+                TreePtr res = MK::Class(sclass->loc, core::Loc(dctx.ctx.file, sclass->declLoc),
+                                        make_tree<UnresolvedIdent>(sclass->expr->loc, UnresolvedIdent::Kind::Class,
+                                                                     core::Names::singleton()),
+                                        std::move(emptyAncestors), std::move(body));
                 result = std::move(res);
             },
             [&](parser::Block *block) {
@@ -959,13 +954,13 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                 auto recv = node2TreeImpl(dctx, std::move(block->send));
                 Send *send;
                 TreePtr res;
-                if ((send = cast_tree<Send>(recv.get())) != nullptr) {
+                if ((send = cast_tree<Send>(recv)) != nullptr) {
                     res = std::move(recv);
                 } else {
                     // This must have been a csend; That will have been desugared
                     // into an insseq with an If in the expression.
                     res = std::move(recv);
-                    auto *is = cast_tree<InsSeq>(res.get());
+                    auto *is = cast_tree<InsSeq>(res);
                     if (!is) {
                         if (auto e = dctx.ctx.beginError(block->loc, core::errors::Desugar::UnsupportedNode)) {
                             e.setHeader("No body in block");
@@ -974,9 +969,9 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                         result = std::move(res);
                         return;
                     }
-                    auto *iff = cast_tree<If>(is->expr.get());
+                    auto *iff = cast_tree<If>(is->expr);
                     ENFORCE(iff != nullptr, "DesugarBlock: failed to find If");
-                    send = cast_tree<Send>(iff->elsep.get());
+                    send = cast_tree<Send>(iff->elsep);
                     ENFORCE(send != nullptr, "DesugarBlock: failed to find Send");
                 }
                 auto [args, destructures] = desugarArgs(dctx, loc, block->args);
@@ -997,17 +992,15 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                 auto cond = node2TreeImpl(dctx, std::move(wl->cond));
                 auto body = node2TreeImpl(dctx, std::move(wl->body));
                 // TODO using bang (aka !) is not semantically correct because it can be overridden by the user.
-                TreePtr res =
-                    isKwbegin
-                        ? doUntil(dctx, loc, MK::Send0(loc, std::move(cond), core::Names::bang()), std::move(body))
-                        : MK::While(loc, std::move(cond), std::move(body));
+                TreePtr res = isKwbegin ? doUntil(dctx, loc, MK::Send0(loc, std::move(cond), core::Names::bang()),
+                                                  std::move(body))
+                                        : MK::While(loc, std::move(cond), std::move(body));
                 result = std::move(res);
             },
             [&](parser::Until *wl) {
                 auto cond = node2TreeImpl(dctx, std::move(wl->cond));
                 auto body = node2TreeImpl(dctx, std::move(wl->body));
-                TreePtr res =
-                    MK::While(loc, MK::Send0(loc, std::move(cond), core::Names::bang()), std::move(body));
+                TreePtr res = MK::While(loc, MK::Send0(loc, std::move(cond), core::Names::bang()), std::move(body));
                 result = std::move(res);
             },
             // This is the same as WhilePost, but the cond negation is in the other branch.
@@ -1025,17 +1018,15 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                 result = std::move(res);
             },
             [&](parser::IVar *var) {
-                TreePtr res =
-                    make_unique<UnresolvedIdent>(loc, UnresolvedIdent::Kind::Instance, var->name);
+                TreePtr res = make_tree<UnresolvedIdent>(loc, UnresolvedIdent::Kind::Instance, var->name);
                 result = std::move(res);
             },
             [&](parser::GVar *var) {
-                TreePtr res =
-                    make_unique<UnresolvedIdent>(loc, UnresolvedIdent::Kind::Global, var->name);
+                TreePtr res = make_tree<UnresolvedIdent>(loc, UnresolvedIdent::Kind::Global, var->name);
                 result = std::move(res);
             },
             [&](parser::CVar *var) {
-                TreePtr res = make_unique<UnresolvedIdent>(loc, UnresolvedIdent::Kind::Class, var->name);
+                TreePtr res = make_tree<UnresolvedIdent>(loc, UnresolvedIdent::Kind::Class, var->name);
                 result = std::move(res);
             },
             [&](parser::LVarLhs *var) {
@@ -1043,22 +1034,20 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                 result = std::move(res);
             },
             [&](parser::GVarLhs *var) {
-                TreePtr res =
-                    make_unique<UnresolvedIdent>(loc, UnresolvedIdent::Kind::Global, var->name);
+                TreePtr res = make_tree<UnresolvedIdent>(loc, UnresolvedIdent::Kind::Global, var->name);
                 result = std::move(res);
             },
             [&](parser::CVarLhs *var) {
-                TreePtr res = make_unique<UnresolvedIdent>(loc, UnresolvedIdent::Kind::Class, var->name);
+                TreePtr res = make_tree<UnresolvedIdent>(loc, UnresolvedIdent::Kind::Class, var->name);
                 result = std::move(res);
             },
             [&](parser::IVarLhs *var) {
-                TreePtr res =
-                    make_unique<UnresolvedIdent>(loc, UnresolvedIdent::Kind::Instance, var->name);
+                TreePtr res = make_tree<UnresolvedIdent>(loc, UnresolvedIdent::Kind::Instance, var->name);
                 result = std::move(res);
             },
             [&](parser::NthRef *var) {
-                TreePtr res = make_unique<UnresolvedIdent>(
-                    loc, UnresolvedIdent::Kind::Global, dctx.ctx.state.enterNameUTF8(to_string(var->ref)));
+                TreePtr res = make_tree<UnresolvedIdent>(loc, UnresolvedIdent::Kind::Global,
+                                                         dctx.ctx.state.enterNameUTF8(to_string(var->ref)));
                 result = std::move(res);
             },
             [&](parser::Assign *asgn) {
@@ -1107,7 +1096,7 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
 
                 auto body = node2TreeImpl(dctx, std::move(for_->body));
 
-                unique_ptr<Block> block;
+                TreePtr block;
                 if (canProvideNiceDesugar) {
                     block = MK::Block(loc, std::move(body), std::move(args));
                 } else {
@@ -1441,7 +1430,7 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                 }
             },
             [&](parser::Retry *ret) {
-                TreePtr res = make_unique<Retry>(loc);
+                TreePtr res = make_tree<Retry>(loc);
                 result = std::move(res);
             },
             [&](parser::Yield *ret) {
@@ -1479,14 +1468,13 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                 cases.reserve(rescue->rescue.size());
                 for (auto &node : rescue->rescue) {
                     TreePtr rescueCaseExpr = node2TreeImpl(dctx, std::move(node));
-                    auto rescueCase = cast_tree<RescueCase>(rescueCaseExpr.get());
+                    auto rescueCase = cast_tree<RescueCase>(rescueCaseExpr);
                     ENFORCE(rescueCase != nullptr, "rescue case cast failed");
                     cases.emplace_back(rescueCase);
                     rescueCaseExpr.release();
                 }
-                TreePtr res =
-                    make_unique<Rescue>(loc, node2TreeImpl(dctx, std::move(rescue->body)), std::move(cases),
-                                        node2TreeImpl(dctx, std::move(rescue->else_)), MK::EmptyTree());
+                TreePtr res = make_tree<Rescue>(loc, node2TreeImpl(dctx, std::move(rescue->body)), std::move(cases),
+                                                  node2TreeImpl(dctx, std::move(rescue->else_)), MK::EmptyTree());
                 result = std::move(res);
             },
             [&](parser::Resbody *resbody) {
@@ -1494,13 +1482,13 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                 auto exceptionsExpr = node2TreeImpl(dctx, std::move(resbody->exception));
                 if (isa_tree<EmptyTree>(exceptionsExpr.get())) {
                     // No exceptions captured
-                } else if (auto exceptionsArray = cast_tree<Array>(exceptionsExpr.get())) {
+                } else if (auto exceptionsArray = cast_tree<Array>(exceptionsExpr)) {
                     ENFORCE(exceptionsArray != nullptr, "exception array cast failed");
 
                     for (auto &elem : exceptionsArray->elems) {
                         exceptions.emplace_back(std::move(elem));
                     }
-                } else if (auto exceptionsSend = cast_tree<Send>(exceptionsExpr.get())) {
+                } else if (auto exceptionsSend = cast_tree<Send>(exceptionsExpr)) {
                     ENFORCE(exceptionsSend->fun == core::Names::splat() || exceptionsSend->fun == core::Names::toA() ||
                                 exceptionsSend->fun == core::Names::concat(),
                             "Unknown exceptionSend function");
@@ -1514,7 +1502,7 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
 
                 auto varLoc = varExpr->loc;
                 auto var = core::NameRef::noName();
-                if (auto *id = cast_tree<UnresolvedIdent>(varExpr.get())) {
+                if (auto *id = cast_tree<UnresolvedIdent>(varExpr)) {
                     if (id->kind == UnresolvedIdent::Kind::Local) {
                         var = id->name;
                         varExpr.reset(nullptr);
@@ -1534,20 +1522,20 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                 }
 
                 TreePtr res =
-                    make_unique<RescueCase>(loc, std::move(exceptions), MK::Local(varLoc, var), std::move(body));
+                    make_tree<RescueCase>(loc, std::move(exceptions), MK::Local(varLoc, var), std::move(body));
                 result = std::move(res);
             },
             [&](parser::Ensure *ensure) {
                 auto bodyExpr = node2TreeImpl(dctx, std::move(ensure->body));
                 auto ensureExpr = node2TreeImpl(dctx, std::move(ensure->ensure));
-                auto rescue = cast_tree<Rescue>(bodyExpr.get());
+                auto rescue = cast_tree<Rescue>(bodyExpr);
                 if (rescue != nullptr) {
                     rescue->ensure = std::move(ensureExpr);
                     result = std::move(bodyExpr);
                 } else {
                     Rescue::RESCUE_CASE_store cases;
-                    TreePtr res = make_unique<Rescue>(loc, std::move(bodyExpr), std::move(cases),
-                                                                     MK::EmptyTree(), std::move(ensureExpr));
+                    TreePtr res = make_tree<Rescue>(loc, std::move(bodyExpr), std::move(cases), MK::EmptyTree(),
+                                                      std::move(ensureExpr));
                     result = std::move(res);
                 }
             },
@@ -1631,7 +1619,7 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                 auto loc = value->loc;
                 Send::ARGS_store args;
                 while (!isa_tree<EmptyTree>(value.get())) {
-                    auto lit = cast_tree<UnresolvedConstantLit>(value.get());
+                    auto lit = cast_tree<UnresolvedConstantLit>(value);
                     if (lit == nullptr) {
                         args.clear();
                         break;
@@ -1720,7 +1708,7 @@ TreePtr liftTopLevel(DesugarContext dctx, core::LocOffsets loc, TreePtr what) {
     ClassDef::RHS_store rhs;
     ClassDef::ANCESTORS_store ancestors;
     ancestors.emplace_back(MK::Constant(loc, core::Symbols::todo()));
-    auto insSeq = cast_tree<InsSeq>(what.get());
+    auto insSeq = cast_tree<InsSeq>(what);
     if (insSeq) {
         rhs.reserve(insSeq->stats.size() + 1);
         for (auto &stat : insSeq->stats) {
@@ -1730,7 +1718,7 @@ TreePtr liftTopLevel(DesugarContext dctx, core::LocOffsets loc, TreePtr what) {
     } else {
         rhs.emplace_back(std::move(what));
     }
-    return make_unique<ClassDef>(loc, core::Loc(dctx.ctx.file, loc), core::Symbols::root(), MK::EmptyTree(),
+    return make_tree<ClassDef>(loc, core::Loc(dctx.ctx.file, loc), core::Symbols::root(), MK::EmptyTree(),
                                  std::move(ancestors), std::move(rhs), ClassDef::Kind::Class);
 }
 } // namespace
