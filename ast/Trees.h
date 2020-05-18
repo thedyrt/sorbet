@@ -37,7 +37,7 @@ private:
 public:
     TreePtr() : ptr(nullptr) {}
 
-    TreePtr(Expression *ptr) : ptr(ptr) {}
+    explicit TreePtr(Expression *ptr) : ptr(ptr) {}
 
     TreePtr(std::nullptr_t) : ptr(nullptr) {}
 
@@ -143,7 +143,7 @@ template <class To> const To *cast_tree_const(const TreePtr &what) {
 }
 
 template <class To> bool isa_tree(const TreePtr &what) {
-    return cast_tree_const<To>(what.get()) != nullptr;
+    return cast_tree_const<To>(what) != nullptr;
 }
 
 class Reference : public Expression {
