@@ -9,7 +9,7 @@ class VerifierWalker {
 
 public:
     TreePtr preTransformExpression(core::Context ctx, TreePtr original) {
-        if (!isa_tree<EmptyTree>(original.get())) {
+        if (!isa_tree<EmptyTree>(original)) {
             ENFORCE(original->loc.exists(), "location is unset");
         }
 
@@ -30,7 +30,7 @@ public:
 
     TreePtr postTransformAssign(core::Context ctx, TreePtr original) {
         auto *assign = cast_tree<Assign>(original);
-        if (ast::isa_tree<ast::UnresolvedConstantLit>(assign->lhs.get())) {
+        if (ast::isa_tree<ast::UnresolvedConstantLit>(assign->lhs)) {
             ENFORCE(methodDepth == 0, "Found constant definition inside method definition");
         }
         return original;

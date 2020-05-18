@@ -13,7 +13,7 @@ private:
     TreePtr substClassName(core::MutableContext ctx, TreePtr node) {
         auto *constLit = cast_tree<UnresolvedConstantLit>(node);
         if (constLit == nullptr) { // uncommon case. something is strange
-            if (isa_tree<EmptyTree>(node.get())) {
+            if (isa_tree<EmptyTree>(node)) {
                 return node;
             }
             return TreeMap::apply(ctx, *this, std::move(node));
@@ -94,7 +94,7 @@ public:
             bool allowSameFromTo = true;
             auto newName = subst.substitute(nameRef, allowSameFromTo);
             if (newName == nameRef) {
-                return original;
+                return tree;
             }
             return MK::String(original->loc, newName);
         }
@@ -105,7 +105,7 @@ public:
             bool allowSameFromTo = true;
             auto newName = subst.substitute(nameRef, allowSameFromTo);
             if (newName == nameRef) {
-                return original;
+                return tree;
             }
             return MK::Symbol(original->loc, newName);
         }

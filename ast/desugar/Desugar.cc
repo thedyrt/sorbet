@@ -114,7 +114,7 @@ TreePtr desugarDString(DesugarContext dctx, core::LocOffsets loc, parser::NodeVe
     Send::ARGS_store interpArgs;
 
     bool allStringsSoFar;
-    if (isStringLit(dctx, first) || isa_tree<EmptyTree>(first.get())) {
+    if (isStringLit(dctx, first) || isa_tree<EmptyTree>(first)) {
         stringsAccumulated.emplace_back(std::move(first));
         allStringsSoFar = true;
     } else {
@@ -128,7 +128,7 @@ TreePtr desugarDString(DesugarContext dctx, core::LocOffsets loc, parser::NodeVe
         TreePtr narg = node2TreeImpl(dctx, std::move(stat));
         if (allStringsSoFar && isStringLit(dctx, narg)) {
             stringsAccumulated.emplace_back(std::move(narg));
-        } else if (isa_tree<EmptyTree>(narg.get())) {
+        } else if (isa_tree<EmptyTree>(narg)) {
             // no op
         } else {
             if (allStringsSoFar) {
@@ -170,9 +170,9 @@ TreePtr validateRBIBody(DesugarContext dctx, TreePtr body) {
     }
 
     auto loc = core::Loc(dctx.enclosingMethodLoc.file(), body->loc);
-    if (isa_tree<EmptyTree>(body.get())) {
+    if (isa_tree<EmptyTree>(body)) {
         return body;
-    } else if (isa_tree<Assign>(body.get())) {
+    } else if (isa_tree<Assign>(body)) {
         if (!isIVarAssign(body)) {
             if (auto e = dctx.ctx.beginError(body->loc, core::errors::Desugar::CodeInRBI)) {
                 e.setHeader("RBI methods must not have code");
@@ -210,7 +210,7 @@ TreePtr buildMethod(DesugarContext dctx, core::LocOffsets loc, core::Loc declLoc
     DesugarContext dctx1(dctx.ctx, uniqueCounter, dctx.enclosingBlockArg, declLoc, name);
     auto [args, destructures] = desugarArgs(dctx1, loc, argnode);
 
-    if (args.empty() || !isa_tree<BlockArg>(args.back().get())) {
+    if (args.empty() || !isa_tree<BlockArg>(args.back())) {
         auto blkLoc = core::LocOffsets::none();
         args.emplace_back(MK::BlockArg(blkLoc, MK::Local(blkLoc, core::Names::blkArg())));
     }
@@ -272,7 +272,7 @@ TreePtr desugarMlhs(DesugarContext dctx, core::LocOffsets loc, parser::Mlhs *lhs
 
             int left = i;
             int right = lhs->exprs.size() - left - 1;
-            if (!isa_tree<EmptyTree>(lh.get())) {
+            if (!isa_tree<EmptyTree>(lh)) {
                 auto exclusive = MK::True(lh->loc);
                 if (right == 0) {
                     right = 1;
@@ -422,7 +422,7 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
             [&](parser::Send *send) {
                 Send::Flags flags;
                 auto rec = node2TreeImpl(dctx, std::move(send->receiver));
-                if (isa_tree<EmptyTree>(rec.get())) {
+                if (isa_tree<EmptyTree>(rec)) {
                     // 0-sized Loc, since `self.` doesn't appear in the original file.
                     rec = MK::Self(loc.copyWithZeroLength());
                     flags.isPrivateOk = true;
@@ -1480,7 +1480,7 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
             [&](parser::Resbody *resbody) {
                 RescueCase::EXCEPTION_store exceptions;
                 auto exceptionsExpr = node2TreeImpl(dctx, std::move(resbody->exception));
-                if (isa_tree<EmptyTree>(exceptionsExpr.get())) {
+                if (isa_tree<EmptyTree>(exceptionsExpr)) {
                     // No exceptions captured
                 } else if (auto exceptionsArray = cast_tree<Array>(exceptionsExpr)) {
                     ENFORCE(exceptionsArray != nullptr, "exception array cast failed");
@@ -1514,7 +1514,7 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                                                          ++dctx.uniqueCounter);
                 }
 
-                if (isa_tree<EmptyTree>(varExpr.get())) {
+                if (isa_tree<EmptyTree>(varExpr)) {
                     varLoc = loc;
                 } else if (varExpr != nullptr) {
                     body = MK::InsSeq1(varLoc, MK::Assign(varLoc, std::move(varExpr), MK::Local(varLoc, var)),
@@ -1618,7 +1618,7 @@ TreePtr node2TreeImpl(DesugarContext dctx, unique_ptr<parser::Node> what) {
                 auto value = node2TreeImpl(dctx, std::move(defined->value));
                 auto loc = value->loc;
                 Send::ARGS_store args;
-                while (!isa_tree<EmptyTree>(value.get())) {
+                while (!isa_tree<EmptyTree>(value)) {
                     auto lit = cast_tree<UnresolvedConstantLit>(value);
                     if (lit == nullptr) {
                         args.clear();
