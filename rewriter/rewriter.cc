@@ -37,26 +37,28 @@ class Rewriterer {
     friend class Rewriter;
 
 public:
-    unique_ptr<ast::ClassDef> postTransformClassDef(core::MutableContext ctx, unique_ptr<ast::ClassDef> classDef) {
-        Command::run(ctx, classDef.get());
-        Rails::run(ctx, classDef.get());
-        TEnum::run(ctx, classDef.get());
-        Flatfiles::run(ctx, classDef.get());
-        Prop::run(ctx, classDef.get());
-        TypeMembers::run(ctx, classDef.get());
-        DefaultArgs::run(ctx, classDef.get());
+    ast::TreePtr postTransformClassDef(core::MutableContext ctx, ast::TreePtr tree) {
+        auto *classDef = ast::cast_tree<ast::ClassDef>(tree);
+
+        Command::run(ctx, classDef);
+        Rails::run(ctx, classDef);
+        TEnum::run(ctx, classDef);
+        Flatfiles::run(ctx, classDef);
+        Prop::run(ctx, classDef);
+        TypeMembers::run(ctx, classDef);
+        DefaultArgs::run(ctx, classDef);
 
         for (auto &extension : ctx.state.semanticExtensions) {
-            extension->run(ctx, classDef.get());
+            extension->run(ctx, classDef);
         }
 
         ast::Expression *prevStat = nullptr;
-        UnorderedMap<ast::Expression *, vector<unique_ptr<ast::Expression>>> replaceNodes;
+        UnorderedMap<ast::Expression *, vector<ast::TreePtr>> replaceNodes;
         for (auto &stat : classDef->rhs) {
             typecase(
                 stat.get(),
                 [&](ast::Assign *assign) {
-                    vector<unique_ptr<ast::Expression>> nodes;
+                    vector<ast::TreePtr> nodes;
 
                     nodes = Struct::run(ctx, assign);
                     if (!nodes.empty()) {
@@ -84,7 +86,7 @@ public:
                 },
 
                 [&](ast::Send *send) {
-                    vector<unique_ptr<ast::Expression>> nodes;
+                    vector<ast::TreePtr> nodes;
 
                     nodes = MixinEncryptedProp::run(ctx, send);
                     if (!nodes.empty()) {
@@ -159,7 +161,7 @@ public:
         ModuleFunction::run(ctx, classDef.get());
         SigRewriter::run(ctx, classDef.get());
 
-        return classDef;
+        return tree;
     }
 
     // NOTE: this case differs from the `Send` typecase branch in `postTransformClassDef` above, as it will apply to all

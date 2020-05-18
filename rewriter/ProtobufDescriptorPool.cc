@@ -6,10 +6,10 @@ using namespace std;
 
 namespace sorbet::rewriter {
 
-vector<unique_ptr<ast::Expression>> ProtobufDescriptorPool::run(core::MutableContext ctx, ast::Assign *asgn) {
-    vector<unique_ptr<ast::Expression>> empty;
+vector<ast::TreePtr> ProtobufDescriptorPool::run(core::MutableContext ctx, ast::Assign *asgn) {
+    vector<ast::TreePtr> empty;
 
-    auto sendMsgclass = ast::cast_tree<ast::Send>(asgn->rhs.get());
+    auto sendMsgclass = ast::cast_tree<ast::Send>(asgn->rhs);
     if (sendMsgclass == nullptr) {
         return empty;
     }
@@ -18,32 +18,32 @@ vector<unique_ptr<ast::Expression>> ProtobufDescriptorPool::run(core::MutableCon
     }
     auto kind = sendMsgclass->fun == core::Names::msgclass() ? ast::ClassDef::Kind::Class : ast::ClassDef::Kind::Module;
 
-    auto sendLookup = ast::cast_tree<ast::Send>(sendMsgclass->recv.get());
+    auto sendLookup = ast::cast_tree<ast::Send>(sendMsgclass->recv);
     if (sendLookup == nullptr || sendLookup->fun != core::Names::lookup()) {
         return empty;
     }
 
-    auto sendGeneratedPool = ast::cast_tree<ast::Send>(sendLookup->recv.get());
+    auto sendGeneratedPool = ast::cast_tree<ast::Send>(sendLookup->recv);
     if (sendGeneratedPool == nullptr || sendGeneratedPool->fun != core::Names::generatedPool()) {
         return empty;
     }
 
-    auto cnstDescriptorPool = ast::cast_tree<ast::UnresolvedConstantLit>(sendGeneratedPool->recv.get());
+    auto cnstDescriptorPool = ast::cast_tree<ast::UnresolvedConstantLit>(sendGeneratedPool->recv);
     if (cnstDescriptorPool == nullptr || cnstDescriptorPool->cnst != core::Names::Constants::DescriptorPool()) {
         return empty;
     }
 
-    auto cnstProtobuf = ast::cast_tree<ast::UnresolvedConstantLit>(cnstDescriptorPool->scope.get());
+    auto cnstProtobuf = ast::cast_tree<ast::UnresolvedConstantLit>(cnstDescriptorPool->scope);
     if (cnstProtobuf == nullptr || cnstProtobuf->cnst != core::Names::Constants::Protobuf()) {
         return empty;
     }
 
-    auto cnstGoogle = ast::cast_tree<ast::UnresolvedConstantLit>(cnstProtobuf->scope.get());
+    auto cnstGoogle = ast::cast_tree<ast::UnresolvedConstantLit>(cnstProtobuf->scope);
     if (cnstGoogle == nullptr || cnstGoogle->cnst != core::Names::Constants::Google()) {
         return empty;
     }
 
-    if (!ast::isa_tree<ast::UnresolvedConstantLit>(asgn->lhs.get())) {
+    if (!ast::isa_tree<ast::UnresolvedConstantLit>(asgn->lhs)) {
         return empty;
     }
 
@@ -59,7 +59,7 @@ vector<unique_ptr<ast::Expression>> ProtobufDescriptorPool::run(core::MutableCon
                                                    std::move(arg), ast::MK::EmptyTree()));
     }
 
-    vector<unique_ptr<ast::Expression>> res;
+    vector<ast::TreePtr> res;
     res.emplace_back(ast::MK::ClassOrModule(asgn->loc, core::Loc(ctx.file, asgn->loc), asgn->lhs->deepCopy(), {},
                                             std::move(rhs), kind));
     return res;

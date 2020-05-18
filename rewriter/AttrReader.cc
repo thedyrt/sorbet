@@ -15,10 +15,10 @@ namespace sorbet::rewriter {
 
 namespace {
 
-pair<core::NameRef, core::LocOffsets> getName(core::MutableContext ctx, ast::Expression *name) {
+pair<core::NameRef, core::LocOffsets> getName(core::MutableContext ctx, ast::TreePtr &name) {
     core::LocOffsets loc;
     core::NameRef res;
-    if (auto lit = ast::cast_tree<ast::Literal>(name)) {
+    if (auto *lit = ast::cast_tree<ast::Literal>(name)) {
         if (lit->isSymbol(ctx)) {
             res = lit->asSymbol(ctx);
             loc = lit->loc;
@@ -51,44 +51,45 @@ pair<core::NameRef, core::LocOffsets> getName(core::MutableContext ctx, ast::Exp
 // these helpers work on a purely syntactic level. for instance, this function determines if an expression is `T`,
 // either with no scope or with the root scope (i.e. `::T`). this might not actually refer to the `T` that we define for
 // users, but we don't know that information in the Rewriter passes.
-bool isT(const unique_ptr<ast::Expression> &expr) {
-    auto *t = ast::cast_tree<ast::UnresolvedConstantLit>(expr.get());
+bool isT(const ast::TreePtr &expr) {
+    auto *t = ast::cast_tree_const<ast::UnresolvedConstantLit>(expr);
     if (t == nullptr || t->cnst != core::Names::Constants::T()) {
         return false;
     }
-    auto scope = t->scope.get();
+    auto &scope = t->scope;
     if (ast::isa_tree<ast::EmptyTree>(scope)) {
         return true;
     }
-    auto root = ast::cast_tree<ast::ConstantLit>(scope);
+    auto root = ast::cast_tree_const<ast::ConstantLit>(scope);
     return root != nullptr && root->symbol == core::Symbols::root();
 }
 
-bool isTNilable(const unique_ptr<ast::Expression> &expr) {
-    auto *nilable = ast::cast_tree<ast::Send>(expr.get());
+bool isTNilable(const ast::TreePtr &expr) {
+    auto *nilable = ast::cast_tree_const<ast::Send>(expr);
     return nilable != nullptr && nilable->fun == core::Names::nilable() && isT(nilable->recv);
 }
 
-bool hasNilableReturns(core::MutableContext ctx, const ast::Send *sharedSig) {
+bool hasNilableReturns(core::MutableContext ctx, const ast::TreePtr &sharedSig) {
     ENFORCE(ASTUtil::castSig(sharedSig, core::Names::returns()),
             "We weren't given a send node that's a valid signature");
 
-    auto block = ast::cast_tree<ast::Block>(sharedSig->block.get());
-    auto body = ast::cast_tree<ast::Send>(block->body.get());
+    auto &send = ast::ref_tree_const<ast::Send>(sharedSig);
+    auto &block = ast::ref_tree_const<ast::Block>(send.block);
+    auto &body = ast::ref_tree_const<ast::Send>(block.body);
 
-    ENFORCE(body->fun == core::Names::returns());
-    if (body->args.size() != 1) {
+    ENFORCE(body.fun == core::Names::returns());
+    if (body.args.size() != 1) {
         return false;
     }
-    return isTNilable(body->args[0]);
+    return isTNilable(body.args[0]);
 }
 
-unique_ptr<ast::Expression> dupReturnsType(core::MutableContext ctx, const ast::Send *sharedSig) {
+ast::TreePtr dupReturnsType(core::MutableContext ctx, const ast::Send *sharedSig) {
     ENFORCE(ASTUtil::castSig(sharedSig, core::Names::returns()),
             "We weren't given a send node that's a valid signature");
 
-    auto block = ast::cast_tree<ast::Block>(sharedSig->block.get());
-    auto body = ast::cast_tree<ast::Send>(block->body.get());
+    auto block = ast::cast_tree_const<ast::Block>(sharedSig->block);
+    auto body = ast::cast_tree_const<ast::Send>(block->body);
 
     ENFORCE(body->fun == core::Names::returns());
     if (body->args.size() != 1) {
@@ -100,8 +101,8 @@ unique_ptr<ast::Expression> dupReturnsType(core::MutableContext ctx, const ast::
 // This will raise an error if we've given a type that's not what we want
 void ensureSafeSig(core::MutableContext ctx, const core::NameRef attrFun, const ast::Send *sig) {
     // Loop down the chain of recv's until we get to the inner 'sig' node.
-    auto block = ast::cast_tree<ast::Block>(sig->block.get());
-    auto body = ast::cast_tree<ast::Send>(block->body.get());
+    auto *block = ast::cast_tree_const<ast::Block>(sig->block);
+    auto *body = ast::cast_tree_const<ast::Send>(block->body);
     ast::Send *cur = body;
     while (cur != nullptr) {
         if (cur->fun == core::Names::typeParameters()) {
@@ -110,7 +111,7 @@ void ensureSafeSig(core::MutableContext ctx, const core::NameRef attrFun, const 
             }
             body->args[0] = ast::MK::Untyped(body->args[0]->loc);
         }
-        cur = ast::cast_tree<ast::Send>(cur->recv.get());
+        cur = ast::cast_tree<ast::Send>(cur->recv);
     }
 }
 
@@ -122,24 +123,24 @@ unique_ptr<ast::Expression> toWriterSigForName(core::MutableContext ctx, const a
             "We weren't given a send node that's a valid signature");
 
     // There's a bit of work here because deepCopy gives us back an Expression when we know it's a Send.
-    unique_ptr<ast::Expression> sigExp = sharedSig->deepCopy();
-    auto sigSend = ast::cast_tree<ast::Send>(sigExp.get());
+    ast::TreePtr sigExp = sharedSig->deepCopy();
+    auto *sigSend = ast::cast_tree<ast::Send>(sigExp);
     ENFORCE(sigSend, "Just deep copied this, so it should be non-null");
     unique_ptr<ast::Send> sig(sigSend);
     sigExp.release();
 
     // Loop down the chain of recv's until we get to the inner 'sig' node.
-    auto block = ast::cast_tree<ast::Block>(sig->block.get());
-    auto body = ast::cast_tree<ast::Send>(block->body.get());
+    auto block = ast::cast_tree<ast::Block>(sig->block);
+    auto body = ast::cast_tree<ast::Send>(block->body);
 
     ENFORCE(body->fun == core::Names::returns());
     if (body->args.size() != 1) {
         return nullptr;
     }
-    unique_ptr<ast::Expression> resultType = body->args[0]->deepCopy();
+    ast::TreePtr resultType = body->args[0]->deepCopy();
     ast::Send *cur = body;
     while (cur != nullptr) {
-        auto recv = ast::cast_tree<ast::ConstantLit>(cur->recv.get());
+        auto recv = ast::cast_tree<ast::ConstantLit>(cur->recv);
         if ((cur->recv->isSelfReference()) || (recv && recv->symbol == core::Symbols::Sorbet())) {
             auto loc = resultType->loc;
             auto hash = ast::MK::Hash1(cur->loc, ast::MK::Symbol(nameLoc, name), move(resultType));
@@ -148,7 +149,7 @@ unique_ptr<ast::Expression> toWriterSigForName(core::MutableContext ctx, const a
             break;
         }
 
-        cur = ast::cast_tree<ast::Send>(cur->recv.get());
+        cur = ast::cast_tree<ast::Send>(cur->recv);
     }
     return sig;
 }
@@ -181,9 +182,8 @@ unique_ptr<ast::Expression> toWriterSigForName(core::MutableContext ctx, const a
 // Also note that the burden is on the user to provide an accurate type signature.
 // All attr_accessor's should probably have `T.nilable(...)` to account for a
 // read-before-write.
-vector<unique_ptr<ast::Expression>> AttrReader::run(core::MutableContext ctx, ast::Send *send,
-                                                    const ast::Expression *prevStat) {
-    vector<unique_ptr<ast::Expression>> empty;
+vector<ast::TreePtr> AttrReader::run(core::MutableContext ctx, ast::Send *send, const ast::TreePtr &prevStat) {
+    vector<ast::TreePtr> empty;
 
     if (ctx.state.runningUnderAutogen) {
         return empty;
@@ -205,13 +205,13 @@ vector<unique_ptr<ast::Expression>> AttrReader::run(core::MutableContext ctx, as
     auto loc = send->loc;
     vector<unique_ptr<ast::Expression>> stats;
 
-    auto sig = ASTUtil::castSig(prevStat, core::Names::returns());
+    auto *sig = ASTUtil::castSig(prevStat, core::Names::returns());
     if (sig != nullptr) {
         ensureSafeSig(ctx, send->fun, sig);
     }
 
     bool declareIvars = false;
-    if (sig != nullptr && hasNilableReturns(ctx, sig)) {
+    if (sig != nullptr && hasNilableReturns(ctx, prevStat)) {
         declareIvars = true;
     }
 
